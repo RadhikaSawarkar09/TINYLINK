@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Stats for <%= link.code %> — TinyLink</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Stats for <%= link.code %></h1>
+      <p class="muted"><a href="/">← Dashboard</a></p>
+    </header>
+
+    <section class="card">
+      <p><strong>Short URL:</strong> <a href="<%= baseUrl %>/<%= link.code %>" target="_blank"><%= baseUrl %>/<%= link.code %></a></p>
+      <p><strong>Target:</strong> <a href="<%= link.target %>" target="_blank"><%= link.target %></a></p>
+      <p><strong>Clicks:</strong> <%= link.clicks %></p>
+      <p><strong>Last clicked:</strong> <%= link.last_clicked ? new Date(link.last_clicked).toLocaleString() : 'Never' %></p>
+      <p><strong>Created:</strong> <%= new Date(link.created_at).toLocaleString() %></p>
+    </section>
+  </main>
+</body>
+</html>

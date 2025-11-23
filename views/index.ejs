@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>TinyLink — Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>TinyLink</h1>
+    <p class="muted">Shorten links — Dashboard</p>
+  </header>
+
+  <main class="container">
+    <section id="create" class="card">
+      <h2>Create short link</h2>
+      <form id="createForm">
+        <div class="form-row">
+          <label>Target URL</label>
+          <input type="url" id="target" placeholder="https://example.com/very/long/path" required />
+          <div class="hint" id="targetError"></div>
+        </div>
+
+        <div class="form-row">
+          <label>Custom code (optional, 6-8 alphanumeric)</label>
+          <input id="code" placeholder="ABC123 (optional)" />
+          <div class="hint" id="codeError"></div>
+        </div>
+
+        <button id="createBtn" type="submit">Create</button>
+        <div id="createMsg" class="muted"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Links</h2>
+      <div class="controls">
+        <input id="filter" placeholder="Filter by code or URL" />
+        <button id="refresh">Refresh</button>
+      </div>
+
+      <div id="empty" class="muted" style="display:none">No links yet — create one above.</div>
+
+      <table id="linksTable" class="links-table" style="display:none">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Target</th>
+            <th>Clicks</th>
+            <th>Last clicked</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="linksBody"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="footer muted">
+    <small>Health: <a href="/healthz">/healthz</a> • Base URL: <%= baseUrl %></small>
+  </footer>
+
+<script>
+const baseUrl = "<%= baseUrl %>";
+const createForm = document.getElementById('createForm');
+const createBtn = document.getElementById('createBtn');
+const targetInput = document.getElementById('target');
+const codeInput = document.getElementById('code');
+const targetError = document.getElementById('targetError');
+const codeError = document.getElementById('codeError');
+const createMsg = document.getElementById('createMsg');
+
+const linksTable = document.getElementById('linksTable');
+const linksBody = document.getElementById('linksBody');
+const empty = document.getElementById('empty');
+const filterInput = document.getElementById('filter');
+const refreshBtn = document.getElementById('refresh');
+
+function isValidCode(code) {
+  return /^[A-Za-z0-9]{6,8}$/.test(code);
+}
+
+function isValidUrl(u) {
+  try {
+    const x = new URL(u);
+    return x.protocol === 'http:' || x.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function fetchLinks() {
+  try {
+    const res = await fetch('/api/links');
+    const arr = await res.json();
+    return arr;
+  } catch (e) {
+    console.error('fetch links', e);
+    return [];
+  }
+}
+
+function renderLinks(list) {
+  const q = filterInput.value.trim().toLowerCase();
+  const filtered = list.filter(l => {
+    if (!q) return true;
+    return l.code.toLowerCase().includes(q) || (l.target || '').toLowerCase().includes(q);
+  });
+
+  linksBody.innerHTML = '';
+  if (filtered.length === 0) {
+    linksTable.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  linksTable.style.display = '';
+
+  filtered.forEach(l => {
+    const tr = document.createElement('tr');
+
+    const codeCell = document.createElement('td');
+    const a = document.createElement('a');
+    a.href = `${baseUrl}/${l.code}`;
+    a.target = '_blank';
+    a.textContent = l.code;
+    codeCell.appendChild(a);
+
+    const targetCell = document.createElement('td');
+    targetCell.className = 'truncate';
+    targetCell.title = l.target;
+    targetCell.textContent = l.target;
+
+    const clicksCell = document.createElement('td');
+    clicksCell.textContent = l.clicks ?? 0;
+
+    const lastCell = document.createElement('td');
+    lastCell.textContent = l.last_clicked ? new Date(l.last_clicked).toLocaleString() : 'Never';
+
+    const actionsCell = document.createElement('td');
+
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.onclick = async () => {
+      await navigator.clipboard.writeText(`${baseUrl}/${l.code}`);
+      copyBtn.textContent = 'Copied';
+      setTimeout(()=> copyBtn.textContent = 'Copy', 1500);
+    };
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = async () => {
+      if (!confirm(`Delete ${l.code}? This cannot be undone.`)) return;
+      const r = await fetch(`/api/links/${l.code}`, { method: 'DELETE' });
+      if (r.status === 200) {
+        loadAndRender();
+      } else {
+        alert('Delete failed');
+      }
+    };
+
+    actionsCell.appendChild(copyBtn);
+    actionsCell.appendChild(delBtn);
+
+    tr.appendChild(codeCell);
+    tr.appendChild(targetCell);
+    tr.appendChild(clicksCell);
+    tr.appendChild(lastCell);
+    tr.appendChild(actionsCell);
+
+    linksBody.appendChild(tr);
+  });
+}
+
+async function loadAndRender() {
+  const list = await fetchLinks();
+  renderLinks(list);
+}
+
+createForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  targetError.textContent = '';
+  codeError.textContent = '';
+  createMsg.textContent = '';
+
+  const target = targetInput.value.trim();
+  const code = codeInput.value.trim();
+
+  if (!isValidUrl(target)) {
+    targetError.textContent = 'Enter a valid http/https URL';
+    return;
+  }
+
+  if (code && !isValidCode(code)) {
+    codeError.textContent = 'Custom code must be 6-8 alphanumeric chars';
+    return;
+  }
+
+  createBtn.disabled = true;
+  createBtn.textContent = 'Creating...';
+
+  try {
+    const res = await fetch('/api/links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, code: code || undefined })
+    });
+
+    if (res.status === 201) {
+      const body = await res.json();
+      createMsg.textContent = `Created: ${baseUrl}/${body.code}`;
+      targetInput.value = '';
+      codeInput.value = '';
+      loadAndRender();
+    } else if (res.status === 409) {
+      createMsg.textContent = 'Custom code already exists';
+    } else {
+      const err = await res.json().catch(()=>({}));
+      createMsg.textContent = err.error || 'Create failed';
+    }
+  } catch (err) {
+    console.error(err);
+    createMsg.textContent = 'Network error';
+  } finally {
+    createBtn.disabled = false;
+    createBtn.textContent = 'Create';
+  }
+});
+
+filterInput.addEventListener('input', () => loadAndRender());
+refreshBtn.addEventListener('click', () => loadAndRender());
+
+// initial load
+loadAndRender();
+</script>
+</body>
+</html>
